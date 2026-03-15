@@ -33,6 +33,21 @@ Set the opencode server URL (default: `http://127.0.0.1:4096`) in `.opencode-pre
 }
 ```
 
+## Testing
+
+Run all tests:
+
+```bash
+go test -v ./...
+```
+
+Run with coverage report:
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+```
+
 ### Example output
 
 ```
