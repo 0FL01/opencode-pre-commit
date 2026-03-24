@@ -15,6 +15,7 @@ type Config struct {
 	Timeout      string   `json:"timeout"`
 	FailStatuses []Status `json:"fail_statuses"`
 	Prompt       string   `json:"prompt"`
+	Model        string   `json:"model"`
 }
 
 func defaultConfig() Config {
@@ -23,6 +24,7 @@ func defaultConfig() Config {
 		Timeout:      defaultTimeout.String(),
 		FailStatuses: []Status{StatusFail},
 		Prompt:       defaultPrompt,
+		Model:        "",
 	}
 }
 

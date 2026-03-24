@@ -25,7 +25,7 @@ func testDeps(stdout, stderr *bytes.Buffer) deps {
 		execOutput: func(string, ...string) ([]byte, error) {
 			return []byte("some diff\n"), nil
 		},
-		newReviewClient: func(string) ReviewClient {
+		newReviewClient: func(string, string) ReviewClient {
 			return &fakeReviewClient{
 				newSessionID: "sess-1",
 				promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
@@ -116,7 +116,7 @@ func TestRun_ConfigLoadError(t *testing.T) {
 func TestRun_OpencodeError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionErr: errors.New("connection refused"),
 		}
@@ -145,7 +145,7 @@ func TestRun_PassStatus(t *testing.T) {
 func TestRun_FailStatus(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
 			promptText:   `{"status":"fail","accuracy":"incorrect","completeness":"insufficient","summary":"bad","issues":[{"severity":"error","kind":"wrong_scope","message":"wrong scope"}]}`,
@@ -163,7 +163,7 @@ func TestRun_FailStatus(t *testing.T) {
 func TestRun_WarnStatusNotInFailStatuses(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
 			promptText:   `{"status":"warn","accuracy":"correct","completeness":"insufficient","summary":"ok","issues":[]}`,
@@ -205,7 +205,7 @@ func TestRun_SpinnerStoppedOnError(t *testing.T) {
 		started = true
 		return func() { stopped = true }
 	}
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionErr: errors.New("connection refused"),
 		}
@@ -229,7 +229,7 @@ func TestRun_UsesConfigBaseURL(t *testing.T) {
 		}
 		return []byte(`{"base_url":"http://custom:9999"}`), nil
 	}
-	d.newReviewClient = func(baseURL string) ReviewClient {
+	d.newReviewClient = func(baseURL string, model string) ReviewClient {
 		usedURL = baseURL
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
@@ -262,7 +262,7 @@ func TestDefaultDeps(t *testing.T) {
 		configPath:      defaultConfigFile,
 		readFile:        os.ReadFile,
 		execOutput:      defaultExecOutput,
-		newReviewClient: newOpencodeClient,
+		newReviewClient: newOpencodeClientWithModel,
 		startSpinner:    startSpinner,
 	}
 	if d.stdout == nil || d.stderr == nil {
@@ -288,7 +288,7 @@ func TestDefaultDeps(t *testing.T) {
 func TestRun_PassWithSuggestedMessage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
 			promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"good","issues":[]}`,
@@ -306,7 +306,7 @@ func TestRun_PassWithSuggestedMessage(t *testing.T) {
 func TestRun_FailWithSuggestedMessage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.newReviewClient = func(string) ReviewClient {
+	d.newReviewClient = func(string, string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
 			promptText:   `{"status":"fail","accuracy":"incorrect","completeness":"insufficient","summary":"bad","issues":[{"severity":"error","kind":"wrong_scope","message":"message claims X but diff does Y","evidence":["added A","modified B"],"suggested_message":"fix: corrected message"}]}`,

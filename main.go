@@ -23,7 +23,7 @@ type deps struct {
 	configPath      string
 	readFile        func(string) ([]byte, error)
 	execOutput      ExecOutput
-	newReviewClient func(baseURL string) ReviewClient
+	newReviewClient func(baseURL, model string) ReviewClient
 	startSpinner    func(w io.Writer, msg string) func()
 }
 
@@ -39,7 +39,7 @@ func defaultDeps() deps {
 		configPath:      defaultConfigFile,
 		readFile:        os.ReadFile,
 		execOutput:      defaultExecOutput,
-		newReviewClient: newOpencodeClient,
+		newReviewClient: newOpencodeClientWithModel,
 		startSpinner:    startSpinner,
 	}
 }
@@ -84,7 +84,7 @@ func run(ctx context.Context, d deps) error {
 
 	// Call LLM
 	stop := d.startSpinner(d.stderr, "Reviewing commit message...")
-	review, err := callOpencode(ctx, d.newReviewClient(cfg.BaseURL), cfg, prompt, d.stderr)
+	review, err := callOpencode(ctx, d.newReviewClient(cfg.BaseURL, cfg.Model), cfg, prompt, d.stderr)
 	stop()
 	if err != nil {
 		return err
