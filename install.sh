@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="0FL01/opencode-pre-commit"
 BRANCH="${2:-main}"
 HOOK_PATH="$(git rev-parse --show-toplevel)/.git/hooks/commit-msg"
+BIN_PATH="$HOME/.local/bin/opencode-pre-commit"
 
 if [ -f "$HOOK_PATH" ]; then
     echo "A commit-msg hook already exists at $HOOK_PATH"
@@ -11,15 +12,13 @@ if [ -f "$HOOK_PATH" ]; then
     exit 1
 fi
 
-BIN_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/opencode-pre-commit"
-BIN_DIR="$(mktemp -d)"
-BIN_PATH="${BIN_DIR}/opencode-pre-commit"
+mkdir -p "$(dirname "$BIN_PATH")"
 
 echo "Downloading opencode-pre-commit..."
 if command -v curl &>/dev/null; then
-    curl -sL --fail -o "$BIN_PATH" "$BIN_URL" || { echo "Download failed"; exit 1; }
+    curl -sL --fail -o "$BIN_PATH" "https://raw.githubusercontent.com/${REPO}/${BRANCH}/opencode-pre-commit" || { echo "Download failed"; exit 1; }
 elif command -v wget &>/dev/null; then
-    wget -q -O "$BIN_PATH" "$BIN_URL" || { echo "Download failed"; exit 1; }
+    wget -q -O "$BIN_PATH" "https://raw.githubusercontent.com/${REPO}/${BRANCH}/opencode-pre-commit" || { echo "Download failed"; exit 1; }
 else
     echo "Error: curl or wget is required"
     exit 1
@@ -34,3 +33,4 @@ EOF
 
 chmod +x "$HOOK_PATH"
 echo "Installed commit-msg hook at $HOOK_PATH"
+echo "Binary installed at $BIN_PATH"
