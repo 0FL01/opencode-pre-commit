@@ -3,16 +3,15 @@ set -euo pipefail
 
 REPO="0FL01/opencode-pre-commit"
 BRANCH="${2:-main}"
-HOOK_PATH="$(git rev-parse --show-toplevel)/.git/hooks/commit-msg"
-BIN_PATH="$HOME/.local/bin/opencode-pre-commit"
+HOOK_DIR="$(git rev-parse --show-toplevel)/.git/hooks"
+HOOK_PATH="${HOOK_DIR}/commit-msg"
+BIN_PATH="${HOOK_DIR}/opencode-pre-commit"
 
 if [ -f "$HOOK_PATH" ]; then
     echo "A commit-msg hook already exists at $HOOK_PATH"
     echo "Remove it first if you want to replace it."
     exit 1
 fi
-
-mkdir -p "$(dirname "$BIN_PATH")"
 
 echo "Downloading opencode-pre-commit..."
 if command -v curl &>/dev/null; then
@@ -28,7 +27,7 @@ chmod +x "$BIN_PATH"
 
 cat > "$HOOK_PATH" << EOF
 #!/usr/bin/env bash
-exec $BIN_PATH "\$1"
+exec "\$(dirname "\$0")/opencode-pre-commit" "\$1"
 EOF
 
 chmod +x "$HOOK_PATH"
