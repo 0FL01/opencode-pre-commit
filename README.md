@@ -15,7 +15,7 @@ A Git `commit-msg` hook that validates commit messages against staged diffs usin
 ## Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/plutov/opencode-pre-commit/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/0FL01/opencode-pre-commit/main/install.sh | bash
 ```
 
 This installs the hook at `.git/hooks/commit-msg`.
