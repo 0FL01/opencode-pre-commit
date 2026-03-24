@@ -5,6 +5,7 @@ A Git `commit-msg` hook that validates commit messages against staged diffs usin
 ## What it does
 
 - Runs automatically on `git commit`
+- Automatically starts opencode server if not running
 - Reads the commit message
 - Reads the staged diff
 - Sends both to LLM for semantic comparison
@@ -18,15 +19,7 @@ A Git `commit-msg` hook that validates commit messages against staged diffs usin
 curl -sSL https://raw.githubusercontent.com/0FL01/opencode-pre-commit/main/install.sh | bash
 ```
 
-This installs the hook at `.git/hooks/commit-msg`.
-
-## Setup opencode server
-
-Make sure an opencode server is running:
-
-```bash
-opencode serve --port 4096
-```
+This installs the hook at `.git/hooks/commit-msg` and downloads the binary to `.git/hooks/opencode-pre-commit`.
 
 ## Configuration
 
@@ -59,16 +52,6 @@ Return pass if it is correct, warn if it is broadly correct but too vague,
 and fail if it is misleading or describes a different primary change.
 ```
 
-### Model format
-
-Use `provider/model` format:
-
-```json
-{
-  "model": "zai-coding-plan/glm-4.7"
-}
-```
-
 ## Usage
 
 Normal workflow:
@@ -84,7 +67,6 @@ git commit -m "fix(auth): normalize token validation"
 ### Example output (pass)
 
 ```
-Reviewing commit message...
 Review status: pass
 Accuracy: correct
 Completeness: sufficient
@@ -94,7 +76,6 @@ Summary: The commit message accurately describes the primary change.
 ### Example output (fail)
 
 ```
-Reviewing commit message...
 Review status: fail
 Accuracy: incorrect
 Completeness: insufficient
@@ -111,7 +92,7 @@ commit message review status "fail" is configured to fail
 ## Uninstall
 
 ```bash
-rm .git/hooks/commit-msg
+rm .git/hooks/commit-msg .git/hooks/opencode-pre-commit
 ```
 
 ## Development
