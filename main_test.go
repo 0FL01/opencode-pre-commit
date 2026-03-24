@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -30,9 +29,6 @@ func testDeps(stdout, stderr *bytes.Buffer) deps {
 				newSessionID: "sess-1",
 				promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 			}
-		},
-		startSpinner: func(w io.Writer, msg string) func() {
-			return func() {}
 		},
 	}
 }
@@ -175,50 +171,6 @@ func TestRun_WarnStatusNotInFailStatuses(t *testing.T) {
 	}
 }
 
-func TestRun_SpinnerStartedAndStopped(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	started := false
-	stopped := false
-	d := testDeps(&stdout, &stderr)
-	d.startSpinner = func(w io.Writer, msg string) func() {
-		started = true
-		return func() { stopped = true }
-	}
-	err := run(context.Background(), d)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !started {
-		t.Error("spinner should have been started")
-	}
-	if !stopped {
-		t.Error("spinner should have been stopped")
-	}
-}
-
-func TestRun_SpinnerStoppedOnError(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	started := false
-	stopped := false
-	d := testDeps(&stdout, &stderr)
-	d.startSpinner = func(w io.Writer, msg string) func() {
-		started = true
-		return func() { stopped = true }
-	}
-	d.newReviewClient = func(string, string) ReviewClient {
-		return &fakeReviewClient{
-			newSessionErr: errors.New("connection refused"),
-		}
-	}
-	_ = run(context.Background(), d)
-	if !started {
-		t.Error("spinner should have been started")
-	}
-	if !stopped {
-		t.Error("spinner should have been stopped even on error")
-	}
-}
-
 func TestRun_UsesConfigBaseURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	var usedURL string
@@ -253,8 +205,6 @@ func TestMain_Subprocess(t *testing.T) {
 }
 
 func TestDefaultDeps(t *testing.T) {
-	// Skip in tests that run after main() has modified os.Args
-	// Just verify the structure is correct
 	d := deps{
 		stdout:          os.Stdout,
 		stderr:          os.Stderr,
@@ -263,7 +213,6 @@ func TestDefaultDeps(t *testing.T) {
 		readFile:        os.ReadFile,
 		execOutput:      defaultExecOutput,
 		newReviewClient: newOpencodeClientWithModel,
-		startSpinner:    startSpinner,
 	}
 	if d.stdout == nil || d.stderr == nil {
 		t.Error("stdout/stderr should not be nil")
@@ -279,9 +228,6 @@ func TestDefaultDeps(t *testing.T) {
 	}
 	if d.newReviewClient == nil {
 		t.Error("newReviewClient should not be nil")
-	}
-	if d.startSpinner == nil {
-		t.Error("startSpinner should not be nil")
 	}
 }
 
