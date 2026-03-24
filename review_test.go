@@ -62,13 +62,37 @@ func TestStripJSONFences_Whitespace(t *testing.T) {
 	}
 }
 
+func TestPrintReview_Pass(t *testing.T) {
+	var buf bytes.Buffer
+	r := &Review{
+		Status:       StatusPass,
+		Accuracy:     "correct",
+		Completeness: "sufficient",
+		Summary:      "The commit message accurately describes the primary change.",
+		Issues:       []Issue{},
+	}
+	printReview(&buf, r)
+	output := buf.String()
+	if !strings.Contains(output, "Review status: pass") {
+		t.Errorf("should contain status, got %q", output)
+	}
+	if !strings.Contains(output, "Accuracy: correct") {
+		t.Errorf("should contain accuracy, got %q", output)
+	}
+	if !strings.Contains(output, "Completeness: sufficient") {
+		t.Errorf("should contain completeness, got %q", output)
+	}
+}
+
 func TestPrintReview_WithIssues(t *testing.T) {
 	var buf bytes.Buffer
 	r := &Review{
-		Status: StatusFail,
+		Status:       StatusFail,
+		Accuracy:     "incorrect",
+		Completeness: "insufficient",
+		Summary:      "The commit message does not match the primary change.",
 		Issues: []Issue{
-			{File: "main.go", Line: 10, Severity: "error", Message: "bug found"},
-			{File: "util.go", Line: 5, Severity: "warning", Message: "unused var"},
+			{Severity: "error", Kind: "wrong_scope", Message: "The message claims X but the diff primarily changes Y", Evidence: []string{"evidence 1", "evidence 2"}, SuggestedMessage: "fix: improved message"},
 		},
 	}
 	printReview(&buf, r)
@@ -76,38 +100,31 @@ func TestPrintReview_WithIssues(t *testing.T) {
 	if !strings.Contains(output, "Review status: fail") {
 		t.Errorf("should contain status, got %q", output)
 	}
-	if !strings.Contains(output, "[error] main.go:10") {
-		t.Errorf("should contain first issue, got %q", output)
+	if !strings.Contains(output, "[error] wrong_scope") {
+		t.Errorf("should contain issue with severity and kind, got %q", output)
 	}
-	if !strings.Contains(output, "[warning] util.go:5") {
-		t.Errorf("should contain second issue, got %q", output)
+	if !strings.Contains(output, "evidence: evidence 1") {
+		t.Errorf("should contain evidence, got %q", output)
 	}
-}
-
-func TestPrintReview_NoIssues(t *testing.T) {
-	var buf bytes.Buffer
-	r := &Review{Status: StatusPass, Issues: []Issue{}}
-	printReview(&buf, r)
-	output := buf.String()
-	if !strings.Contains(output, "No issues found.") {
-		t.Errorf("should contain 'No issues found.', got %q", output)
+	if !strings.Contains(output, "suggested: fix: improved message") {
+		t.Errorf("should contain suggested message, got %q", output)
 	}
 }
 
 func TestPrintReview_NilIssues(t *testing.T) {
 	var buf bytes.Buffer
-	r := &Review{Status: StatusPass}
+	r := &Review{Status: StatusPass, Accuracy: "correct", Completeness: "sufficient", Summary: "ok"}
 	printReview(&buf, r)
 	output := buf.String()
-	if !strings.Contains(output, "No issues found.") {
-		t.Errorf("should contain 'No issues found.', got %q", output)
+	if !strings.Contains(output, "Summary: ok") {
+		t.Errorf("should contain summary, got %q", output)
 	}
 }
 
 func TestCallOpencode_Success(t *testing.T) {
 	client := &fakeReviewClient{
 		newSessionID: "sess-1",
-		promptText:   `{"status":"pass","issues":[]}`,
+		promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 	}
 	cfg := Config{Timeout: "1m"}
 	review, err := callOpencode(context.Background(), client, cfg, "prompt", &bytes.Buffer{})
@@ -125,7 +142,7 @@ func TestCallOpencode_Success(t *testing.T) {
 func TestCallOpencode_WithFences(t *testing.T) {
 	client := &fakeReviewClient{
 		newSessionID: "sess-1",
-		promptText:   "```json\n{\"status\":\"warn\",\"issues\":[]}\n```",
+		promptText:   "```json\n{\"status\":\"warn\",\"accuracy\":\"correct\",\"completeness\":\"insufficient\",\"summary\":\"ok\",\"issues\":[]}\n```",
 	}
 	cfg := Config{Timeout: "1m"}
 	review, err := callOpencode(context.Background(), client, cfg, "prompt", &bytes.Buffer{})
@@ -190,7 +207,7 @@ func TestCallOpencode_InvalidJSON(t *testing.T) {
 func TestCallOpencode_InvalidTimeout(t *testing.T) {
 	client := &fakeReviewClient{
 		newSessionID: "sess-1",
-		promptText:   `{"status":"pass","issues":[]}`,
+		promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 	}
 	cfg := Config{Timeout: "not-a-duration"}
 	review, err := callOpencode(context.Background(), client, cfg, "prompt", &bytes.Buffer{})
@@ -206,7 +223,7 @@ func TestCallOpencode_DeleteWarning(t *testing.T) {
 	var warn bytes.Buffer
 	client := &fakeReviewClient{
 		newSessionID: "sess-1",
-		promptText:   `{"status":"pass","issues":[]}`,
+		promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 		deleteErr:    errors.New("delete failed"),
 	}
 	cfg := Config{Timeout: "1m"}
@@ -225,7 +242,7 @@ func TestCallOpencode_DeleteWarning(t *testing.T) {
 func TestCallOpencode_WithIssues(t *testing.T) {
 	client := &fakeReviewClient{
 		newSessionID: "sess-1",
-		promptText:   `{"status":"fail","issues":[{"file":"main.go","line":10,"severity":"error","message":"bug"}]}`,
+		promptText:   `{"status":"fail","accuracy":"incorrect","completeness":"insufficient","summary":"bad","issues":[{"severity":"error","kind":"wrong_scope","message":"wrong scope","evidence":["evidence1"],"suggested_message":"fix: better"}]}`,
 	}
 	cfg := Config{Timeout: "1m"}
 	review, err := callOpencode(context.Background(), client, cfg, "prompt", &bytes.Buffer{})
@@ -238,7 +255,10 @@ func TestCallOpencode_WithIssues(t *testing.T) {
 	if len(review.Issues) != 1 {
 		t.Fatalf("expected 1 issue, got %d", len(review.Issues))
 	}
-	if review.Issues[0].File != "main.go" {
-		t.Errorf("issue file = %q, want %q", review.Issues[0].File, "main.go")
+	if review.Issues[0].Kind != "wrong_scope" {
+		t.Errorf("issue kind = %q, want %q", review.Issues[0].Kind, "wrong_scope")
+	}
+	if review.Issues[0].SuggestedMessage != "fix: better" {
+		t.Errorf("suggested message = %q, want %q", review.Issues[0].SuggestedMessage, "fix: better")
 	}
 }

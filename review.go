@@ -19,16 +19,22 @@ const (
 
 var allStatuses = []Status{StatusPass, StatusFail, StatusWarn}
 
+// Review represents the LLM's assessment of a commit message against a diff.
 type Review struct {
-	Status Status  `json:"status"`
-	Issues []Issue `json:"issues"`
+	Status       Status  `json:"status"`
+	Accuracy     string  `json:"accuracy"`
+	Completeness string  `json:"completeness"`
+	Summary      string  `json:"summary"`
+	Issues       []Issue `json:"issues"`
 }
 
+// Issue represents a problem found with the commit message.
 type Issue struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Severity string `json:"severity"`
-	Message  string `json:"message"`
+	Severity         string   `json:"severity"`
+	Kind             string   `json:"kind"`
+	Message          string   `json:"message"`
+	Evidence         []string `json:"evidence,omitempty"`
+	SuggestedMessage string   `json:"suggested_message,omitempty"`
 }
 
 type ReviewClient interface {
@@ -46,7 +52,7 @@ func callOpencode(ctx context.Context, client ReviewClient, cfg Config, prompt s
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	sessionID, err := client.NewSession(ctx, "pre-commit review")
+	sessionID, err := client.NewSession(ctx, "commit-msg review")
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
@@ -81,10 +87,28 @@ func stripJSONFences(s string) string {
 
 func printReview(w io.Writer, r *Review) {
 	fmt.Fprintf(w, "Review status: %s\n", r.Status)
-	for _, issue := range r.Issues {
-		fmt.Fprintf(w, "  [%s] %s:%d — %s\n", issue.Severity, issue.File, issue.Line, issue.Message)
-	}
-	if len(r.Issues) == 0 {
-		fmt.Fprintln(w, "  No issues found.")
+	fmt.Fprintf(w, "Accuracy: %s\n", r.Accuracy)
+	fmt.Fprintf(w, "Completeness: %s\n", r.Completeness)
+	fmt.Fprintf(w, "Summary: %s\n", r.Summary)
+
+	if len(r.Issues) > 0 {
+		fmt.Fprintln(w, "")
+		for _, issue := range r.Issues {
+			severity := issue.Severity
+			if severity == "" {
+				severity = "error"
+			}
+			fmt.Fprintf(w, "  [%s] %s: %s\n", severity, issue.Kind, issue.Message)
+
+			if len(issue.Evidence) > 0 {
+				for _, e := range issue.Evidence {
+					fmt.Fprintf(w, "    - evidence: %s\n", e)
+				}
+			}
+
+			if issue.SuggestedMessage != "" {
+				fmt.Fprintf(w, "    suggested: %s\n", issue.SuggestedMessage)
+			}
+		}
 	}
 }

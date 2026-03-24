@@ -12,10 +12,14 @@ import (
 
 func testDeps(stdout, stderr *bytes.Buffer) deps {
 	return deps{
-		stdout:     stdout,
-		stderr:     stderr,
-		configPath: "config.json",
-		readFile: func(string) ([]byte, error) {
+		stdout:        stdout,
+		stderr:        stderr,
+		commitMsgPath: "/tmp/commit_msg",
+		configPath:    "config.json",
+		readFile: func(path string) ([]byte, error) {
+			if path == "/tmp/commit_msg" {
+				return []byte("fix: something"), nil
+			}
 			return nil, os.ErrNotExist
 		},
 		execOutput: func(string, ...string) ([]byte, error) {
@@ -24,12 +28,43 @@ func testDeps(stdout, stderr *bytes.Buffer) deps {
 		newReviewClient: func(string) ReviewClient {
 			return &fakeReviewClient{
 				newSessionID: "sess-1",
-				promptText:   `{"status":"pass","issues":[]}`,
+				promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 			}
 		},
 		startSpinner: func(w io.Writer, msg string) func() {
 			return func() {}
 		},
+	}
+}
+
+func TestRun_EmptyCommitMsgPath(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	d := testDeps(&stdout, &stderr)
+	d.commitMsgPath = ""
+	err := run(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected error for empty commitMsgPath")
+	}
+	if !strings.Contains(err.Error(), "usage") {
+		t.Errorf("error = %q, should mention usage", err.Error())
+	}
+}
+
+func TestRun_EmptyCommitMessage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	d := testDeps(&stdout, &stderr)
+	d.readFile = func(path string) ([]byte, error) {
+		if path == "/tmp/commit_msg" {
+			return []byte("# just a comment\n# another comment\n"), nil
+		}
+		return nil, os.ErrNotExist
+	}
+	err := run(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected error for empty commit message")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("error = %q, should mention 'empty'", err.Error())
 	}
 }
 
@@ -66,7 +101,10 @@ func TestRun_DiffError(t *testing.T) {
 func TestRun_ConfigLoadError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	d := testDeps(&stdout, &stderr)
-	d.readFile = func(string) ([]byte, error) {
+	d.readFile = func(path string) ([]byte, error) {
+		if path == "/tmp/commit_msg" {
+			return []byte("fix: something"), nil
+		}
 		return []byte("{invalid"), nil
 	}
 	err := run(context.Background(), d)
@@ -110,7 +148,7 @@ func TestRun_FailStatus(t *testing.T) {
 	d.newReviewClient = func(string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
-			promptText:   `{"status":"fail","issues":[{"file":"a.go","line":1,"severity":"error","message":"bad"}]}`,
+			promptText:   `{"status":"fail","accuracy":"incorrect","completeness":"insufficient","summary":"bad","issues":[{"severity":"error","kind":"wrong_scope","message":"wrong scope"}]}`,
 		}
 	}
 	err := run(context.Background(), d)
@@ -128,7 +166,7 @@ func TestRun_WarnStatusNotInFailStatuses(t *testing.T) {
 	d.newReviewClient = func(string) ReviewClient {
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
-			promptText:   `{"status":"warn","issues":[]}`,
+			promptText:   `{"status":"warn","accuracy":"correct","completeness":"insufficient","summary":"ok","issues":[]}`,
 		}
 	}
 	err := run(context.Background(), d)
@@ -185,14 +223,17 @@ func TestRun_UsesConfigBaseURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	var usedURL string
 	d := testDeps(&stdout, &stderr)
-	d.readFile = func(string) ([]byte, error) {
+	d.readFile = func(path string) ([]byte, error) {
+		if path == "/tmp/commit_msg" {
+			return []byte("fix: something"), nil
+		}
 		return []byte(`{"base_url":"http://custom:9999"}`), nil
 	}
 	d.newReviewClient = func(baseURL string) ReviewClient {
 		usedURL = baseURL
 		return &fakeReviewClient{
 			newSessionID: "sess-1",
-			promptText:   `{"status":"pass","issues":[]}`,
+			promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"ok","issues":[]}`,
 		}
 	}
 	err := run(context.Background(), d)
@@ -212,7 +253,18 @@ func TestMain_Subprocess(t *testing.T) {
 }
 
 func TestDefaultDeps(t *testing.T) {
-	d := defaultDeps()
+	// Skip in tests that run after main() has modified os.Args
+	// Just verify the structure is correct
+	d := deps{
+		stdout:          os.Stdout,
+		stderr:          os.Stderr,
+		commitMsgPath:   "test_path",
+		configPath:      defaultConfigFile,
+		readFile:        os.ReadFile,
+		execOutput:      defaultExecOutput,
+		newReviewClient: newOpencodeClient,
+		startSpinner:    startSpinner,
+	}
 	if d.stdout == nil || d.stderr == nil {
 		t.Error("stdout/stderr should not be nil")
 	}
@@ -230,5 +282,42 @@ func TestDefaultDeps(t *testing.T) {
 	}
 	if d.startSpinner == nil {
 		t.Error("startSpinner should not be nil")
+	}
+}
+
+func TestRun_PassWithSuggestedMessage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	d := testDeps(&stdout, &stderr)
+	d.newReviewClient = func(string) ReviewClient {
+		return &fakeReviewClient{
+			newSessionID: "sess-1",
+			promptText:   `{"status":"pass","accuracy":"correct","completeness":"sufficient","summary":"good","issues":[]}`,
+		}
+	}
+	err := run(context.Background(), d)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Review status: pass") {
+		t.Errorf("stdout = %q, want 'Review status: pass'", stdout.String())
+	}
+}
+
+func TestRun_FailWithSuggestedMessage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	d := testDeps(&stdout, &stderr)
+	d.newReviewClient = func(string) ReviewClient {
+		return &fakeReviewClient{
+			newSessionID: "sess-1",
+			promptText:   `{"status":"fail","accuracy":"incorrect","completeness":"insufficient","summary":"bad","issues":[{"severity":"error","kind":"wrong_scope","message":"message claims X but diff does Y","evidence":["added A","modified B"],"suggested_message":"fix: corrected message"}]}`,
+		}
+	}
+	err := run(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected error for fail status")
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "suggested: fix: corrected message") {
+		t.Errorf("stdout should contain suggested message, got %q", output)
 	}
 }

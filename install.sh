@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOOK_PATH="$(git rev-parse --show-toplevel)/.git/hooks/pre-commit"
+HOOK_PATH="$(git rev-parse --show-toplevel)/.git/hooks/commit-msg"
 
 if [ -f "$HOOK_PATH" ]; then
-    echo "A pre-commit hook already exists at $HOOK_PATH"
+    echo "A commit-msg hook already exists at $HOOK_PATH"
     echo "Remove it first if you want to replace it."
     exit 1
 fi
@@ -20,8 +20,8 @@ fi
 
 cat > "$HOOK_PATH" << EOF
 #!/usr/bin/env bash
-exec $BIN
+exec $BIN "\$1"
 EOF
 
 chmod +x "$HOOK_PATH"
-echo "Installed pre-commit hook at $HOOK_PATH"
+echo "Installed commit-msg hook at $HOOK_PATH"
