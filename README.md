@@ -1,16 +1,28 @@
 # opencode-pre-commit
 
-A Git pre-commit hook that reviews staged diffs using an [opencode](https://opencode.ai) server.
+A Git `commit-msg` hook that validates commit messages against staged diffs using an [opencode](https://opencode.ai) server.
+
+## What it does
+
+- Runs automatically on `git commit`
+- Reads the commit message
+- Reads the staged diff
+- Sends both to LLM for semantic comparison
+- **Pass**: commit proceeds
+- **Fail**: commit is blocked, shows suggested message for agent
+- **Warn**: by default proceeds (configurable)
 
 ## Install
-
-In your repo:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/plutov/opencode-pre-commit/main/install.sh | bash
 ```
 
-Make sure to have an opencode server running and accessible at the configured URL.
+This installs the hook at `.git/hooks/commit-msg`.
+
+## Setup opencode server
+
+Make sure an opencode server is running:
 
 ```bash
 opencode serve --port 4096
@@ -18,45 +30,100 @@ opencode serve --port 4096
 
 ## Configuration
 
-### Server URL
-
-Set the opencode server URL (default: `http://127.0.0.1:4096`) in `.opencode-pre-commit.json`:
+Create `.opencode-pre-commit.json` in your repo root:
 
 ```json
 {
   "base_url": "http://127.0.0.1:4096",
   "timeout": "5m",
-  "fail_statuses": [
-    "fail"
-  ],
-  "prompt": "Check for typos, ensure all variables are used, and verify formatting."
+  "fail_statuses": ["fail"],
+  "model": "zai-coding-plan/glm-4.7"
 }
 ```
 
-## Testing
+### Options
 
-Run all tests:
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `base_url` | string | `http://127.0.0.1:4096` | opencode server URL |
+| `timeout` | string | `5m` | request timeout |
+| `fail_statuses` | []string | `["fail"]` | statuses that block commit |
+| `model` | string | (none) | force specific LLM model |
+| `prompt` | string | (see below) | custom prompt instruction |
+
+### Default prompt
+
+```
+Evaluate whether the commit message accurately and sufficiently describes the staged changes.
+Return pass if it is correct, warn if it is broadly correct but too vague,
+and fail if it is misleading or describes a different primary change.
+```
+
+### Model format
+
+Use `provider/model` format:
+
+```json
+{
+  "model": "zai-coding-plan/glm-4.7"
+}
+```
+
+## Usage
+
+Normal workflow:
+
+```bash
+git add .
+git commit -m "fix(auth): normalize token validation"
+# hook validates message against diff
+# if ok -> commit proceeds
+# if bad -> commit blocked, suggested message shown
+```
+
+### Example output (pass)
+
+```
+Reviewing commit message...
+Review status: pass
+Accuracy: correct
+Completeness: sufficient
+Summary: The commit message accurately describes the primary change.
+```
+
+### Example output (fail)
+
+```
+Reviewing commit message...
+Review status: fail
+Accuracy: incorrect
+Completeness: insufficient
+Summary: The commit message does not match the primary change.
+
+  [error] wrong_scope: The message claims a test-related change, but the diff primarily modifies auth token normalization.
+    - evidence: Added TokenNormalizer struct
+    - evidence: Changes validateToken() to call normalize()
+    suggested: fix(auth): normalize token format before validation
+
+commit message review status "fail" is configured to fail
+```
+
+## Uninstall
+
+```bash
+rm .git/hooks/commit-msg
+```
+
+## Development
+
+Run tests:
 
 ```bash
 go test -v ./...
 ```
 
-Run with coverage report:
+Build:
 
 ```bash
-go test -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
-```
-
-### Example output
-
-```
-go run main.go
-Review status: fail
-  [warning] main.go:103 — json.Unmarshal error is silently ignored in loadConfig() - malformed config will fail silently
-  [warning] main.go:140 — time.ParseDuration error is silently ignored - invalid timeout falls back to default without user notification
-  [error] install.sh:17 — go install result is not checked - script continues even if build fails, then tries to use non-existent binary
-  [error] opencode-pre-commit:0 — Binary file committed to git - binaries should not be committed to version control
-opencode-pre-commit: review status "fail" is configured to fail
-exit status 1
+go build -o opencode-pre-commit .
 ```
