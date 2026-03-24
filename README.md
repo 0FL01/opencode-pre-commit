@@ -21,9 +21,9 @@ curl -sSL https://raw.githubusercontent.com/0FL01/opencode-pre-commit/main/insta
 
 This installs the hook at `.git/hooks/commit-msg` and downloads the binary to `.git/hooks/opencode-pre-commit`.
 
-## Configuration
+## Configuration (optional)
 
-Create `.opencode-pre-commit.json` in your repo root:
+Create `.opencode-pre-commit.json` in your repo root to override defaults:
 
 ```json
 {
